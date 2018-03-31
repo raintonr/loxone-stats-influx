@@ -1,0 +1,21 @@
+{
+	"name": "loxone-ws-influx",
+	"version": "0.0.1",
+	"description": "Import Loxone data gathered via WS into InfluxDB",
+	"main": "loxone-ws-influx.js",
+	"dependencies": {
+		"node-lox-ws-api": ">=0.4.3",
+		"config": "*",
+		"influx": "*"
+	},
+	"devDependencies": {},
+	"scripts": {
+		"start": "node loxone-ws-influx.js"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/raintonr/loxone-stats-influx"
+	},
+	"author": "Robin Rainton <robin@rainton.com>",
+	"license": "Apache-2.0"
+}
