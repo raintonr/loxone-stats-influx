@@ -38,7 +38,7 @@ Cons: FTP, even just changed files, basically copies and loads all stats for the
 Pros: All your historical data is impored and from time of install updates are instant.
 Cons: Setup for the Node.js app is slightly more involved.
 
-### Method 2
+### Method 3
 
 1. Create JSON config file.
 2. Setup `loxone-ws-influx` Node.js app and run continuously.
