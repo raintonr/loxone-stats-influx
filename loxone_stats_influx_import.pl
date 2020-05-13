@@ -46,11 +46,18 @@ use Time::Local;
 # TODO: should be command line option
 use constant VERBOSE => 1;
 
+# Dry-run?
+# TODO: should be command line option
+use constant DRY_RUN => 0;
+
 # Byte positions in Loxone stat files
 use constant TITLE_START => 12;
-use constant DATA_LENGTH => 16;
+use constant READING_BOUNDARY => 16;
+use constant UUID_LENGTH => 4;
+use constant DATE_LENGTH => 4;
+use constant READING_LENGTH => 8;
 
-# Loxone times begine 1 Jan 2009
+# Loxone times begin 1 Jan 2009
 use constant TIMESTAMP_OFFSET => 1230768000;
 
 # Load config. JSON is easy to use in Node.js too.
@@ -95,25 +102,34 @@ sub process_file {
 		printf("Processing %s ... ", $stat_file);
 
 		my $bin = read_file($stat_file, { binmode => ':raw' });
+
+                # First byte holds number of readings
+                my $readings = unpack("C", $bin);
+
 		# TODO: this is pretty horrible, is there a better way?
 		my $title = unpack("Z64", substr($bin, TITLE_START));
-		printf("%s\n", $title);
 
-		# Work out the next data boundary
-		my $data_position = (int((TITLE_START + length($title)) / DATA_LENGTH) + 1) * DATA_LENGTH;
-		printf("Data starting at %d\n", $data_position) if(VERBOSE);
+                printf(" %s (readings: %d)\n", $title, $readings) if(VERBOSE);
+                my $data_length = (int((DATE_LENGTH + $readings * READING_LENGTH) / READING_BOUNDARY) + 1) * READING_BOUNDARY;
+                
+                # Work out the next data boundary
+                my $data_position = (int((TITLE_START + length($title)) / READING_BOUNDARY) + 1) * READING_BOUNDARY;
+                printf("Data starting at %d with length %d\n", $data_position, $data_length) if(VERBOSE);
 
 		my $http = HTTP::Tiny->new;
 		my $points = 0;
 		my $form_data = '';
-		for(;$data_position < length($bin); $data_position += DATA_LENGTH) {
-			my $data = substr($bin, $data_position, DATA_LENGTH);
+		for(;$data_position < length($bin); $data_position += $data_length) {
+			my $data = substr($bin, $data_position, $data_length);
 
-			my $localstamp = unpack("I", substr($data, 4, 4)) + TIMESTAMP_OFFSET;
+			my $localstamp = unpack("I", substr($data, UUID_LENGTH, DATE_LENGTH)) + TIMESTAMP_OFFSET;
+                        
 			# Convert to UTC (InfluxDB only works in UTC)
 			my $stamp = timelocal(gmtime($localstamp));
 			
-			my $val = unpack("d", substr($data, 8, 8));
+                        # For now we only handle the first of multi-value files
+                        my $lp = 0;
+                        my $val = unpack("d", substr($data, (DATE_LENGTH + UUID_LENGTH) + ($lp * READING_LENGTH), 8));
 	
 			$form_data .= "\n" if ($points > 0);
 			# TODO, 3 decimals for now, although it should be possible
@@ -122,12 +138,19 @@ sub process_file {
 
 			$points++;
 		}
-		my $response = $http->request('POST', $url, { content => $form_data });
-		print Dumper($response) if (VERBOSE);
-		printf("%d points read & posted.\n", $points);
+
+		if (DRY_RUN) {
+                        print Dumper($form_data) if (VERBOSE);
+                        printf("%d points read.\n", $points);
+                } else {
+                        my $response = $http->request('POST', $url, { content => $form_data });
+                        print Dumper($response) if (VERBOSE);
+                        printf("%d points read & posted.\n", $points);
+
+                        my $mtime = (stat($stat_file))[9];
+                        $lastmtime = $mtime if ($mtime > $lastmtime);
+                }
 		
-		my $mtime = (stat($stat_file))[9];
-		$lastmtime = $mtime if ($mtime > $lastmtime);
 	}
 }
 
